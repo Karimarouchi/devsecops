@@ -1,0 +1,176 @@
+name: "🔐 DevSecOps - Full Security Pipeline"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  security-events: write
+
+jobs:
+
+  # 1️⃣ SAST - SEMGREP
+  sast:
+    name: "🔍 SAST - Semgrep"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: pip install semgrep
+
+      - run: |
+          semgrep --config=.semgrep/java-password-sql.yml --json -o semgrep.json || true
+
+      - run: |
+          if grep -q '"check_id"' semgrep.json; then
+            echo "❌ Semgrep vulnerabilities found!"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep.json
+
+  # 2️⃣ SCA - DEPENDENCY CHECK
+  sca:
+    needs: sast
+    runs-on: ubuntu-latest
+    name: "🧩 SCA - Dependency Check"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - run: |
+          wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
+          unzip dependency-check-10.0.3-release.zip
+          mv dependency-check /opt/dependency-check
+          chmod +x /opt/dependency-check/bin/dependency-check.sh
+
+      - run: |
+          /opt/dependency-check/bin/dependency-check.sh \
+            --project "DevSecOps" \
+            --scan ./ \
+            --format "ALL" \
+            --out dep-report || true
+
+      - run: |
+          if grep -q "CRITICAL" dep-report/dependency-check-report.html; then
+            echo "❌ Critical dependencies found!"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dep-report
+
+  # 3️⃣ Secrets - Gitleaks
+  secrets:
+    needs: sca
+    runs-on: ubuntu-latest
+    name: "🔒 Secret Scan - Gitleaks"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --report-format json --report-path gitleaks.json || true
+
+      - run: |
+          if grep -q '"Description"' gitleaks.json; then
+            echo "❌ Secrets detected!"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.json
+
+  # 4️⃣ Docker Scan - Trivy
+  docker_scan:
+    needs: secrets
+    runs-on: ubuntu-latest
+    name: "🐳 Trivy Scan"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - run: docker build -t devsecops:latest .
+
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "devsecops:latest"
+          format: "json"
+          output: "trivy.json"
+          exit-code: "0"
+
+      - run: |
+          if grep -q "CRITICAL" trivy.json; then
+            echo "❌ Critical vulnerabilities in Docker image!"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy.json
+
+  # 5️⃣ DAST - NIKTO
+  dast:
+    needs: docker_scan
+    runs-on: ubuntu-latest
+    name: "🌐 DAST - Nikto"
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: |
+          sudo apt update -qq
+          sudo apt install -y nikto
+          nikto -h http://testphp.vulnweb.com -o nikto.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nikto-report
+          path: nikto.txt
+
+  # 6️⃣ QODANA
+  qodana:
+    needs: dast
+    runs-on: ubuntu-latest
+    name: "🔍 Qodana Cloud"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: JetBrains/qodana-action@v2024.1.4
+        env:
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+
+  # 7️⃣ EMAIL NOTIFICATION
+  notify_email:
+    needs: [sast, sca, secrets, docker_scan, dast, qodana]
+    if: failure()
+    runs-on: ubuntu-latest
+    name: "📧 Pipeline Failure Email"
+    steps:
+      - name: Send Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "🚨 DevSecOps Pipeline Failed"
+          body: "Un scan de sécurité a échoué. Consulte GitHub Actions."
+          from: ${{ secrets.EMAIL_FROM }}
+          to: ${{ secrets.EMAIL_TO }}

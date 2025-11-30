@@ -1,0 +1,16 @@
+target/
+*.log
+
+semgrep-report.json
+semgrep-report.txt
+semgrep-report.html
+semgrep-custom.json
+gitleaks.json
+dep-report/
+trivy.json
+nikto.txt
+
+.idea/
+.vscode/
+*.iml
+*.class
