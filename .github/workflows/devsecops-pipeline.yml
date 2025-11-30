@@ -49,47 +49,47 @@ jobs:
   #----------------------------------------------------
   # 2) SCA — DEPENDENCY CHECK
   #----------------------------------------------------
-  sca:
-    needs: sast
-    name: "🧩 SCA - Dependency Check"
-    runs-on: ubuntu-latest
+sca:
+  needs: sast
+  name: "🧩 SCA - Dependency Check"
+  runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+  steps:
+    - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
+    - uses: actions/setup-java@v4
+      with:
+        java-version: "17"
+        distribution: "temurin"
 
-      - name: Install Dependency Check
-        run: |
-          wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
-          unzip dependency-check-10.0.3-release.zip
-          mv dependency-check /opt/dependency-check
-          chmod +x /opt/dependency-check/bin/dependency-check.sh
-          mkdir -p dep-report
+    - name: Install Dependency Check
+      run: |
+        wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
+        unzip dependency-check-10.0.3-release.zip
+        mv dependency-check /opt/dependency-check
+        chmod +x /opt/dependency-check/bin/dependency-check.sh
+        mkdir -p ${{ github.workspace }}/dep-report
 
-      - name: Run Dependency Check
-        run: |
-          /opt/dependency-check/bin/dependency-check.sh \
-            --nvdApiKey ${{ secrets.NVD_API_KEY }} \
-            --project "DevSecOps" \
-            --scan ./ \
-            --format "ALL" \
-            --out dep-report || true
+    - name: Run Dependency Check
+      run: |
+        /opt/dependency-check/bin/dependency-check.sh \
+          --nvdApiKey ${{ secrets.NVD_API_KEY }} \
+          --project "DevSecOps" \
+          --scan ./ \
+          --format "ALL" \
+          --out ${{ github.workspace }}/dep-report || true
 
-      - name: Fail on CRITICAL vulnerabilities
-        run: |
-          if grep -q "CRITICAL" dep-report/dependency-check-report.html; then
-            echo "❌ Critical dependencies found!"
-            exit 1
-          fi
+    - name: Check CRITICAL findings
+      run: |
+        if grep -q "CRITICAL" ${{ github.workspace }}/dep-report/dependency-check-report.html; then
+          echo "❌ Critical dependencies found!"
+          exit 1
+        fi
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dependency-report
-          path: dep-report
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dependency-report
+        path: ${{ github.workspace }}/dep-report
 
 
   #----------------------------------------------------
