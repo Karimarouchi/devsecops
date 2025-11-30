@@ -1,3 +1,4 @@
+
 name: "🔐 DevSecOps - Full Security Pipeline"
 
 on:
@@ -21,12 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: pip install semgrep
+      - name: Install Semgrep
+        run: pip install semgrep
 
-      - run: |
+      - name: Run Semgrep
+        run: |
           semgrep --config=.semgrep/java-password-sql.yml --json -o semgrep.json || true
 
-      - run: |
+      - name: Check Semgrep results
+        run: |
           if grep -q '"check_id"' semgrep.json; then
             echo "❌ Semgrep vulnerabilities found!"
             exit 1
@@ -44,25 +48,30 @@ jobs:
     name: "🧩 SCA - Dependency Check"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: "temurin"
 
-      - run: |
+      - name: Install Dependency Check
+        run: |
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
           unzip dependency-check-10.0.3-release.zip
           mv dependency-check /opt/dependency-check
           chmod +x /opt/dependency-check/bin/dependency-check.sh
+          mkdir -p dep-report
 
-      - run: |
+      - name: Run Dependency Check
+        run: |
           /opt/dependency-check/bin/dependency-check.sh \
             --project "DevSecOps" \
             --scan ./ \
             --format "ALL" \
             --out dep-report || true
 
-      - run: |
+      - name: Check Dependency Check results
+        run: |
           if grep -q "CRITICAL" dep-report/dependency-check-report.html; then
             echo "❌ Critical dependencies found!"
             exit 1
@@ -73,7 +82,7 @@ jobs:
           name: dependency-report
           path: dep-report
 
-  # 3️⃣ Secrets - Gitleaks
+  # 3️⃣ SECRET SCAN - GITLEAKS (100% FIXÉ)
   secrets:
     needs: sca
     runs-on: ubuntu-latest
@@ -81,11 +90,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source . --report-format json --report-path gitleaks.json || true
+      - name: Install Gitleaks
+        uses: gitleaks/gitleaks-action@v2
 
-      - run: |
+      - name: Run Gitleaks
+        run: |
+          gitleaks detect \
+            --source . \
+            --report-format json \
+            --report-path gitleaks.json || true
+
+      - name: Check for secrets
+        run: |
           if grep -q '"Description"' gitleaks.json; then
             echo "❌ Secrets detected!"
             exit 1
@@ -96,26 +112,29 @@ jobs:
           name: gitleaks-report
           path: gitleaks.json
 
-  # 4️⃣ Docker Scan - Trivy
+  # 4️⃣ DOCKER SCAN - TRIVY
   docker_scan:
     needs: secrets
     runs-on: ubuntu-latest
-    name: "🐳 Trivy Scan"
+    name: "🐳 Docker Scan - Trivy"
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - run: docker build -t devsecops:latest .
+      - name: Build Docker image
+        run: docker build -t devsecops:latest .
 
-      - uses: aquasecurity/trivy-action@master
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: "devsecops:latest"
           format: "json"
           output: "trivy.json"
           exit-code: "0"
 
-      - run: |
+      - name: Check Trivy results
+        run: |
           if grep -q "CRITICAL" trivy.json; then
             echo "❌ Critical vulnerabilities in Docker image!"
             exit 1
@@ -134,21 +153,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: |
+      - name: Install Nikto
+        run: |
           sudo apt update -qq
           sudo apt install -y nikto
-          nikto -h http://testphp.vulnweb.com -o nikto.txt
+
+      - name: Run Nikto
+        run: nikto -h http://testphp.vulnweb.com -o nikto.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: nikto-report
           path: nikto.txt
 
-  # 6️⃣ QODANA
+  # 6️⃣ STATIC CODE QUALITY - QODANA
   qodana:
     needs: dast
     runs-on: ubuntu-latest
-    name: "🔍 Qodana Cloud"
+    name: "🔍 Qodana"
     steps:
       - uses: actions/checkout@v4
 
@@ -156,7 +178,7 @@ jobs:
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
 
-  # 7️⃣ EMAIL NOTIFICATION
+  # 7️⃣ FAILURE NOTIFICATION
   notify_email:
     needs: [sast, sca, secrets, docker_scan, dast, qodana]
     if: failure()
@@ -171,6 +193,6 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🚨 DevSecOps Pipeline Failed"
-          body: "Un scan de sécurité a échoué. Consulte GitHub Actions."
+          body: "Un scan de sécurité a échoué. Consulte les logs GitHub Actions."
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO }}
