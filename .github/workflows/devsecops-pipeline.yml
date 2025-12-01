@@ -94,7 +94,7 @@ jobs:
           path: dep-report
 
   #----------------------------------------------------
-  # 3) SECRETS SCAN — GITLEAKS (CLI version)
+  # 3) SECRETS SCAN — GITLEAKS (CLI version stable)
   #----------------------------------------------------
   secrets:
     name: "🔒 Secrets Scan - Gitleaks"
@@ -106,16 +106,15 @@ jobs:
 
       - name: Install Gitleaks CLI
         run: |
-          curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
-          | grep "gitleaks-linux-amd64" | cut -d '"' -f 4 | wget -qi -
-          mv gitleaks-linux-amd64 gitleaks
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | \
+            sh -s -- -b .
           chmod +x gitleaks
 
       - name: Run Gitleaks
         run: |
           ./gitleaks detect --source . \
-          --report-path=gitleaks.json \
-          --report-format=json || true
+            --report-format=json \
+            --report-path=gitleaks.json || true
 
       - name: Fail if secrets found
         run: |
