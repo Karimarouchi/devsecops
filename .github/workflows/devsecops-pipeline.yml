@@ -97,37 +97,33 @@ jobs:
   # 3) SECRETS SCAN — GITLEAKS (CLI version stable)
   #----------------------------------------------------
   secrets:
-    name: "🔒 Secrets Scan - Gitleaks"
+    name: "🔒 Secrets Scan - TruffleHog"
     needs: sca
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Gitleaks CLI
+      - name: Install TruffleHog
         run: |
-          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | \
-            sh -s -- -b .
-          chmod +x gitleaks
+          pip install trufflehog
 
-      - name: Run Gitleaks
+      - name: Run Secrets Scan
         run: |
-          ./gitleaks detect --source . \
-            --report-format=json \
-            --report-path=gitleaks.json || true
+          trufflehog filesystem . --json > trufflehog.json || true
 
       - name: Fail if secrets found
         run: |
-          if grep -q '"Description"' gitleaks.json; then
+          if grep -q '"Source"' trufflehog.json; then
             echo "❌ Secrets detected!"
             exit 1
           fi
 
       - uses: actions/upload-artifact@v4
-        if: hashFiles('gitleaks.json') != ''
+        if: hashFiles('trufflehog.json') != ''
         with:
-          name: gitleaks-report
-          path: gitleaks.json
+          name: trufflehog-report
+          path: trufflehog.json
 
   #----------------------------------------------------
   # 4) DOCKER — TRIVY SCAN
