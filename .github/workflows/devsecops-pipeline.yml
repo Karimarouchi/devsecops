@@ -233,6 +233,20 @@ jobs:
       - name: Récupérer les artefacts
         uses: actions/download-artifact@v4
 
+      - name: Debug - Vérifier artefacts téléchargés
+        run: |
+          echo "📁 Fichiers présents :"
+          ls -R .
+
+      - name: Debug - Vérifier existence des rapports
+        run: |
+          test -f semgrep-report/semgrep.json && echo "Semgrep ✔" || echo "Semgrep ❌"
+          test -f dependency-report/dependency-check-report.html && echo "SCA ✔" || echo "SCA ❌"
+          test -f trufflehog-report/trufflehog.json && echo "TruffleHog ✔" || echo "TruffleHog ❌"
+          test -f sbom-report/sbom.json && echo "SBOM ✔" || echo "SBOM ❌"
+          test -f trivy-report/trivy.json && echo "Trivy ✔" || echo "Trivy ❌"
+          test -f nikto-report/nikto.txt && echo "Nikto ✔" || echo "Nikto ❌"
+
       - name: Installer Python
         uses: actions/setup-python@v4
         with:

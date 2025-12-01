@@ -1,67 +1,104 @@
-import json
 import os
+import json
+from pathlib import Path
 
+# -----------------------------------------------------
+# Helper: read a file safely
+# -----------------------------------------------------
 def read_file(path):
     if not os.path.exists(path):
-        return "Rapport non trouvé."
-    with open(path, "r", errors="ignore") as f:
-        return f.read()
+        print(f"⚠️  Fichier introuvable : {path}")
+        return None
 
-html = f"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        print(f"❌ Erreur lecture fichier {path}: {e}")
+        return None
+
+
+# -----------------------------------------------------
+# Vérification des rapports
+# -----------------------------------------------------
+
+reports = {
+    "semgrep": "semgrep-report/semgrep.json",
+    "sca": "dependency-report/dependency-check-report.html",
+    "trufflehog": "trufflehog-report/trufflehog.json",
+    "sbom": "sbom-report/sbom.json",
+    "trivy": "trivy-report/trivy.json",
+    "nikto": "nikto-report/nikto.txt"
+}
+
+loaded_reports = {}
+
+print("\n📌 Vérification des rapports...\n")
+
+for key, path in reports.items():
+    if os.path.exists(path):
+        print(f"✔️  {key.upper()} trouvé : {path}")
+        loaded_reports[key] = read_file(path)
+    else:
+        print(f"❌ {key.upper()} manquant : {path}")
+        loaded_reports[key] = None
+
+
+# -----------------------------------------------------
+# Templates HTML simples
+# -----------------------------------------------------
+
+def html_section(title, content):
+    if not content:
+        content_html = "<p style='color:#999;'>Rapport non trouvé.</p>"
+    else:
+        content_html = f"<pre style='background:#f4f4f4;padding:10px;border-radius:6px;'>{content[:3000]}</pre>"
+
+    return f"""
+    <section style="padding:20px;border-bottom:1px solid #ddd;">
+        <h2>{title}</h2>
+        {content_html}
+    </section>
+    """
+
+
+# -----------------------------------------------------
+# Construction Dashboard HTML
+# -----------------------------------------------------
+
+html = """
 <html>
 <head>
-<title>DevSecOps Security Dashboard</title>
-<style>
-body {{ font-family: Arial; background: #f4f4f4; padding: 20px; }}
-h1 {{ color: #2c3e50; }}
-section {{ background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }}
-pre {{ background: #eee; padding: 10px; border-radius: 5px; }}
-</style>
+    <meta charset="utf-8"/>
+    <title>DevSecOps - Security Dashboard</title>
+    <style>
+        body { font-family: Arial; background:#fafafa; }
+        h1 { background:#111; color:white; padding:15px; }
+        h2 { color:#333; }
+    </style>
 </head>
 <body>
-
 <h1>🔐 DevSecOps – Security Dashboard</h1>
+"""
 
-<section>
-<h2>🔍 SAST - Semgrep</h2>
-<pre>{read_file("semgrep.json")}</pre>
-</section>
+html += html_section("🔍 SAST - Semgrep", loaded_reports["semgrep"])
+html += html_section("🧩 SCA - Dependency Check", loaded_reports["sca"])
+html += html_section("🔒 Secrets Scan - TruffleHog", loaded_reports["trufflehog"])
+html += html_section("📦 SBOM - Syft", loaded_reports["sbom"])
+html += html_section("🐳 Docker Scan - Trivy", loaded_reports["trivy"])
+html += html_section("🌐 DAST - Nikto", loaded_reports["nikto"])
 
-<section>
-<h2>🧩 SCA - Dependency Check</h2>
-<pre>{read_file("dep-report/dependency-check-report.html")}</pre>
-</section>
-
-<section>
-<h2>🔒 Secrets Scan - TruffleHog</h2>
-<pre>{read_file("trufflehog.json")}</pre>
-</section>
-
-<section>
-<h2>📦 SBOM - Syft</h2>
-<pre>{read_file("sbom.json")}</pre>
-</section>
-
-<section>
-<h2>🐳 Docker Scan - Trivy</h2>
-<pre>{read_file("trivy.json")}</pre>
-</section>
-
-<section>
-<h2>🌐 DAST - Nikto</h2>
-<pre>{read_file("nikto.txt")}</pre>
-</section>
-
-<section>
-<h2>🔍 Qodana</h2>
-<p>Consulte le rapport Qodana dans l’onglet Artifacts.</p>
-</section>
-
+html += """
 </body>
 </html>
 """
 
-with open("security-dashboard.html", "w") as f:
+# -----------------------------------------------------
+# Sauvegarde du dashboard
+# -----------------------------------------------------
+
+output_file = "security-dashboard.html"
+with open(output_file, "w", encoding="utf-8") as f:
     f.write(html)
 
-print("Dashboard généré : security-dashboard.html")
+print(f"\n✅ Dashboard généré : {output_file}\n")
