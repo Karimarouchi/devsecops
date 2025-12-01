@@ -17,7 +17,7 @@ permissions:
 jobs:
 
   #----------------------------------------------------
-  # 1) SAST — SEMGREP
+  # 1) SEMGREP
   #----------------------------------------------------
   sast:
     name: "🔍 SAST - Semgrep"
@@ -56,7 +56,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           java-version: "17"
@@ -68,20 +67,20 @@ jobs:
           unzip dependency-check-10.0.3-release.zip
           mv dependency-check /opt/dependency-check
           chmod +x /opt/dependency-check/bin/dependency-check.sh
-          mkdir -p ${{ github.workspace }}/dep-report
+          mkdir -p dep-report
 
       - name: Run Dependency Check
         run: |
           /opt/dependency-check/bin/dependency-check.sh \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
             --project "DevSecOps" \
-            --scan ./ \
+            --scan "." \
             --format "ALL" \
-            --out ${{ github.workspace }}/dep-report || true
+            --out "dep-report" || true
 
-      - name: Check CRITICAL findings
+      - name: Check CRITICAL Dependencies
         run: |
-          if grep -q "CRITICAL" ${{ github.workspace }}/dep-report/dependency-check-report.html; then
+          if test -f dep-report/dependency-check-report.html && grep -q "CRITICAL" dep-report/dependency-check-report.html ; then
             echo "❌ Critical dependencies found!"
             exit 1
           fi
@@ -89,11 +88,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dependency-report
-          path: ${{ github.workspace }}/dep-report
+          path: dep-report
 
 
   #----------------------------------------------------
-  # 3) SECRETS SCAN — GITLEAKS
+  # 3) SECRETS — GITLEAKS
   #----------------------------------------------------
   secrets:
     needs: sca
@@ -104,9 +103,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v1
         with:
-          args: detect --source . --report-format json --report-path gitleaks.json || true
+          args: "--report-path=gitleaks.json --report-format=json --path=."
 
       - name: Fail on secrets found
         run: |
@@ -122,7 +121,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 4) DOCKER — TRIVY SCAN
+  # 4) TRIVY — DOCKER
   #----------------------------------------------------
   docker_scan:
     needs: secrets
@@ -144,10 +143,10 @@ jobs:
           output: "trivy.json"
           exit-code: "0"
 
-      - name: Fail on CRITICAL Docker findings
+      - name: Fail on CRITICAL findings
         run: |
           if grep -q "CRITICAL" trivy.json; then
-            echo "❌ Critical Docker vulnerabilities detected!"
+            echo "❌ Critical vulnerabilities detected!"
             exit 1
           fi
 
@@ -168,7 +167,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Nikto scan
+      - name: Run Nikto
         run: |
           sudo apt update -qq
           sudo apt install -y nikto
@@ -181,7 +180,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 6) QODANA — CLOUD SCAN
+  # 6) QODANA
   #----------------------------------------------------
   qodana:
     needs: dast
@@ -199,13 +198,13 @@ jobs:
 
 
   #----------------------------------------------------
-  # 7) EMAIL NOTIFICATION ON FAILURE
+  # 7) EMAIL NOTIFICATION
   #----------------------------------------------------
   notify_email:
     needs: [sast, sca, secrets, docker_scan, dast, qodana]
     if: failure()
-    runs-on: ubuntu-latest
     name: "📧 Pipeline Failure Email"
+    runs-on: ubuntu-latest
 
     steps:
       - name: Send Email
@@ -217,12 +216,9 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🚨 DevSecOps Pipeline Failed"
           body: |
-            ⚠️ Un scan de sécurité a échoué dans la pipeline DevSecOps.
-
-            Consulte les logs GitHub Actions :
+            ⚠️ Un scan a échoué dans la pipeline DevSecOps.
+            Consulte les logs ici :
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            — DevSecOps Automated Security System
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO }}
 
