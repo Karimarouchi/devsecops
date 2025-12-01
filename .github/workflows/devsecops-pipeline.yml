@@ -1,4 +1,4 @@
-name: "🔐 DevSecOps - Full Security Pipeline"
+kname: "🔐 DevSecOps - Full Security Pipeline"
 
 on:
   push:
@@ -94,7 +94,7 @@ jobs:
           path: dep-report
 
   #----------------------------------------------------
-  # 3) SECRETS SCAN — GITLEAKS (CLI version stable)
+  # 3) SECRETS SCAN — TRUFFLEHOG
   #----------------------------------------------------
   secrets:
     name: "🔒 Secrets Scan - TruffleHog"
@@ -105,10 +105,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install TruffleHog
-        run: |
-          pip install trufflehog
+        run: pip install trufflehog
 
-      - name: Run Secrets Scan
+      - name: Run TruffleHog
         run: |
           trufflehog filesystem . --json > trufflehog.json || true
 
@@ -126,11 +125,35 @@ jobs:
           path: trufflehog.json
 
   #----------------------------------------------------
-  # 4) DOCKER — TRIVY SCAN
+  # 4) SBOM — SYFT
+  #----------------------------------------------------
+  sbom:
+    name: "📦 SBOM - Syft"
+    needs: secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM
+        run: syft dir:. -o json > sbom.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-report
+          path: sbom.json
+
+  #----------------------------------------------------
+  # 5) DOCKER — TRIVY SCAN
   #----------------------------------------------------
   docker_scan:
     name: "🐳 Docker Scan - Trivy"
-    needs: secrets
+    needs: sbom
     runs-on: ubuntu-latest
 
     steps:
@@ -156,13 +179,12 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@v4
-        if: hashFiles('trivy.json') != ''
         with:
           name: trivy-report
           path: trivy.json
 
   #----------------------------------------------------
-  # 5) DAST — NIKTO
+  # 6) DAST — NIKTO
   #----------------------------------------------------
   dast:
     name: "🌐 DAST - Nikto"
@@ -171,7 +193,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Run Nikto
         run: |
           sudo apt update -qq
@@ -179,13 +200,12 @@ jobs:
           nikto -h http://testphp.vulnweb.com -o nikto.txt
 
       - uses: actions/upload-artifact@v4
-        if: hashFiles('nikto.txt') != ''
         with:
           name: nikto-report
           path: nikto.txt
 
   #----------------------------------------------------
-  # 6) QODANA
+  # 7) QODANA — CODE QUALITY
   #----------------------------------------------------
   qodana:
     name: "🔍 Qodana Cloud"
@@ -194,18 +214,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: JetBrains/qodana-action@v2025.2
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_800884080 }}
           QODANA_ENDPOINT: "https://qodana.cloud"
 
   #----------------------------------------------------
-  # 7) EMAIL NOTIFICATION
+  # 8) EMAIL NOTIFICATION
   #----------------------------------------------------
   notify_email:
     name: "📧 Pipeline Failure Email"
-    needs: [sast, sca, secrets, docker_scan, dast, qodana]
+    needs: [sast, sca, secrets, sbom, docker_scan, dast, qodana]
     if: failure()
     runs-on: ubuntu-latest
 
@@ -219,11 +238,12 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🚨 DevSecOps Pipeline Failed"
           body: |
-            ⚠️ Un scan de sécurité a échoué dans la pipeline DevSecOps.
+            ⚠️ Un scan de sécurité a échoué dans la pipeline DevSecOps !
 
-            Consulte les logs GitHub Actions :
+            Logs :
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
             — DevSecOps Automated Security System
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO }}
+
