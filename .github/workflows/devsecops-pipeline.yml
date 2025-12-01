@@ -220,11 +220,39 @@ jobs:
           QODANA_ENDPOINT: "https://qodana.cloud"
 
   #----------------------------------------------------
-  # 8) EMAIL NOTIFICATION
+  # 8) DASHBOARD HTML CONSOLIDÉ
+  #----------------------------------------------------
+  dashboard:
+    name: "📊 Generate Security Dashboard"
+    needs: [sast, sca, secrets, sbom, docker_scan, dast, qodana]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Récupérer les artefacts
+        uses: actions/download-artifact@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Générer le Dashboard HTML
+        run: python scripts/generate_dashboard.py
+
+      - name: Upload Dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dashboard
+          path: security-dashboard.html
+
+  #----------------------------------------------------
+  # 9) EMAIL NOTIFICATION
   #----------------------------------------------------
   notify_email:
     name: "📧 Pipeline Failure Email"
-    needs: [sast, sca, secrets, sbom, docker_scan, dast, qodana]
+    needs: [sast, sca, secrets, sbom, docker_scan, dast, qodana, dashboard]
     if: failure()
     runs-on: ubuntu-latest
 
