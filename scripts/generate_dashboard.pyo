@@ -87,3 +87,4 @@ with open("security-dashboard.html", "w") as f:
     f.write(html)
 
 print("Dashboard generated correctly.")
+
