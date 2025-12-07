@@ -230,31 +230,58 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      #----------------------------------------------------
+      # 1) Télécharger tous les artefacts
+      #----------------------------------------------------
       - name: Récupérer les artefacts
         uses: actions/download-artifact@v4
 
-      - name: Debug - Vérifier artefacts téléchargés
+      #----------------------------------------------------
+      # 2) Réorganiser les artefacts dans /reports
+      #   (OBLIGATOIRE pour que ton script Python fonctionne)
+      #----------------------------------------------------
+      - name: Réorganiser les artefacts dans reports/
         run: |
-          echo "📁 Fichiers présents :"
-          ls -R .
+          mkdir -p reports
+          mv semgrep-report reports/ || true
+          mv dependency-report reports/ || true
+          mv trufflehog-report reports/ || true
+          mv sbom-report reports/ || true
+          mv trivy-report reports/ || true
+          mv nikto-report reports/ || true
 
+          echo "📁 Nouveau contenu du dossier reports/"
+          ls -R reports
+
+      #----------------------------------------------------
+      # 3) Debug : Vérifier que tout est bien là
+      #----------------------------------------------------
       - name: Debug - Vérifier existence des rapports
         run: |
-          test -f semgrep-report/semgrep.json && echo "Semgrep ✔" || echo "Semgrep ❌"
-          test -f dependency-report/dependency-check-report.html && echo "SCA ✔" || echo "SCA ❌"
-          test -f trufflehog-report/trufflehog.json && echo "TruffleHog ✔" || echo "TruffleHog ❌"
-          test -f sbom-report/sbom.json && echo "SBOM ✔" || echo "SBOM ❌"
-          test -f trivy-report/trivy.json && echo "Trivy ✔" || echo "Trivy ❌"
-          test -f nikto-report/nikto.txt && echo "Nikto ✔" || echo "Nikto ❌"
+          test -f reports/semgrep-report/semgrep.json && echo "Semgrep ✔" || echo "Semgrep ❌"
+          test -f reports/dependency-report/dependency-check-report.html && echo "SCA ✔" || echo "SCA ❌"
+          test -f reports/trufflehog-report/trufflehog.json && echo "TruffleHog ✔" || echo "TruffleHog ❌"
+          test -f reports/sbom-report/sbom.json && echo "SBOM ✔" || echo "SBOM ❌"
+          test -f reports/trivy-report/trivy.json && echo "Trivy ✔" || echo "Trivy ❌"
+          test -f reports/nikto-report/nikto.txt && echo "Nikto ✔" || echo "Nikto ❌"
 
+      #----------------------------------------------------
+      # 4) Installer Python
+      #----------------------------------------------------
       - name: Installer Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
+      #----------------------------------------------------
+      # 5) Générer le Dashboard HTML
+      #----------------------------------------------------
       - name: Générer le Dashboard HTML
         run: python scripts/generate_dashboard.py
 
+      #----------------------------------------------------
+      # 6) Upload Dashboard final
+      #----------------------------------------------------
       - name: Upload Dashboard
         uses: actions/upload-artifact@v4
         with:
