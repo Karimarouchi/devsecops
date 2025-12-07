@@ -3,11 +3,11 @@ rules:
   - id: java.hardcoded-password
     message: "Hardcoded password found — avoid embedding sensitive data."
     severity: ERROR
+    languages: [java]
     patterns:
       - pattern: $VAR = "password"
       - pattern: $VAR = "<SECRET>"
-      - pattern: $VAR = /.*(?i:pass).*/
-    languages: [java]
+      - pattern-regex: '(?i)pass'   # ✔ regex compatible Semgrep
 
   - id: java.sql-injection.statement
     message: "Possible SQL injection — use PreparedStatement instead."
@@ -20,9 +20,9 @@ rules:
   - id: java.sql-injection.concat
     message: "Possible SQL Injection — avoid dynamic SQL concatenation."
     severity: ERROR
+    languages: [java]
     pattern: |
       $STMT = $CONN.prepareStatement("SELECT" + $PART);
-    languages: [java]
 
   - id: java.runtime-exec
     message: "Dangerous use of Runtime.exec — potential command injection."
@@ -66,7 +66,7 @@ rules:
       - pattern: LOGGER.info($X)
       - metavariable-pattern:
           metavariable: $X
-          pattern: /.*(?i:password|token|secret|credential|email).*/
+          pattern-regex: '(?i)(password|token|secret|credential|email)'   # ✔ regex OK
 
   - id: java.path-traversal
     message: "Possible Directory Traversal — validate file paths."
