@@ -1,270 +1,141 @@
-import json, os, html
+import json
+import os
+from html import escape
 
-# =======================
-#   HELPERS
-# =======================
-def safe_read(path):
+BASE = "reports"
+
+def load_json(path):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
+            try:
+                return json.load(f)
+            except:
+                return None
     return None
 
-def safe_json(path):
-    try:
-        data = safe_read(path)
-        return json.loads(data) if data else None
-    except:
-        return None
+def section(title, content):
+    return f"""
+    <div class="section">
+        <h2>{title}</h2>
+        {content}
+    </div>
+    """
 
-
-# =======================
-#   SEMGREP (SAST)
-# =======================
-def section_semgrep():
-    data = safe_json("reports/semgrep-report/semgrep.json")
-    out = "<h2>🔍 SAST - Semgrep</h2>"
-
+# ---------------- SEMGREP ----------------
+def parse_semgrep():
+    path = f"{BASE}/semgrep-report/semgrep.json"
+    data = load_json(path)
     if not data:
-        return out + "<p><i>Rapport introuvable.</i></p>"
+        return "<p>Rapport introuvable.</p>"
 
-    # Erreur règle
     if data.get("errors"):
-        err = html.escape(data["errors"][0]["message"])
-        return out + f"<p style='color:#c62828'><b>Erreur Semgrep :</b> {err}</p>"
+        msg = escape(data["errors"][0]["message"])
+        return f"<p><b>Erreur Semgrep :</b> {msg}</p>"
 
     results = data.get("results", [])
     if not results:
-        return out + "<p>Aucun problème détecté ✔️</p>"
+        return "<p>Aucun problème détecté ✔</p>"
 
-    out += """
-    <table class="report-table">
-      <tr><th>Fichier</th><th>Ligne</th><th>Sévérité</th><th>Description</th></tr>
-    """
-
+    html = "<table><tr><th>Fichier</th><th>Ligne</th><th>Message</th><th>Sévérité</th></tr>"
     for r in results:
-        out += f"""
-        <tr>
-          <td>{html.escape(r['path'])}</td>
-          <td>{r['start']['line']}</td>
-          <td>{r['extra'].get('severity','N/A')}</td>
-          <td>{html.escape(r['extra'].get('message',''))}</td>
-        </tr>
-        """
+        html += f"<tr><td>{escape(r['path'])}</td><td>{r['start']['line']}</td><td>{escape(r['extra']['message'])}</td><td>{r['extra'].get('severity')}</td></tr>"
+    html += "</table>"
+    return html
 
-    out += "</table>"
-    return out
+# ---------------- TRUFFLEHOG ----------------
+def parse_trufflehog():
+    path = f"{BASE}/trufflehog-report/trufflehog.json"
+    data = load_json(path)
 
+    if data is None:
+        return "<p>Rapport introuvable.</p>"
 
-# =======================
-#   DEPENDENCY-CHECK (SCA)
-# =======================
-def section_sca():
-    path = "reports/dependency-report/dependency-check-report.html"
-    out = "<h2>🧩 SCA - Dependency Check</h2>"
-    
-    if not os.path.exists(path):
-        return out + "<p><i>Rapport introuvable.</i></p>"
+    if isinstance(data, list) and len(data) == 0:
+        return "<p>Aucun secret détecté ✔</p>"
 
-    # Résumé simple : compter les occurrences HIGH et CRITICAL
-    content = safe_read(path)
-    high = content.count("HIGH")
-    critical = content.count("CRITICAL")
+    return "<p>Secrets détectés (non affichés ici pour sécurité).</p>"
 
-    out += f"""
-    <p><b>Résumé :</b></p>
-    <ul>
-      <li><b>Vulnérabilités HIGH :</b> {high}</li>
-      <li><b>Vulnérabilités CRITICAL :</b> {critical}</li>
-    </ul>
-    <p><i>Voir le rapport complet dans dependency-check-report.html</i></p>
-    """
-    return out
+# ---------------- DEPENDENCY CHECK ----------------
+def parse_dependency():
+    path = f"{BASE}/dependency-report/dependency-check-report.html"
+    if os.path.exists(path):
+        return "<p>Rapport disponible : dependency-check-report.html</p>"
+    return "<p>Rapport introuvable.</p>"
 
-
-# =======================
-#   TRUFFLEHOG (SECRETS)
-# =======================
-def section_secrets():
-    data = safe_json("reports/trufflehog-report/trufflehog.json")
-    out = "<h2>🔒 Secrets Scan - TruffleHog</h2>"
-
+# ---------------- SBOM ----------------
+def parse_sbom():
+    path = f"{BASE}/sbom-report/sbom.json"
+    data = load_json(path)
     if not data:
-        return out + "<p><i>Rapport introuvable.</i></p>"
+        return "<p>Rapport introuvable.</p>"
 
-    if isinstance(data, dict):
-        return out + "<p>Aucun secret détecté ✔️</p>"
+    components = data.get("artifacts", [])
+    html = f"<p><b>Composants détectés :</b> {len(components)}</p>"
 
-    findings = []
+    html += "<table><tr><th>Nom</th><th>Version</th><th>Type</th></tr>"
+    for comp in components:
+        html += f"<tr><td>{escape(comp['name'])}</td><td>{comp.get('version','?')}</td><td>{comp.get('type','?')}</td></tr>"
+    html += "</table>"
 
-    for line in safe_read("reports/trufflehog-report/trufflehog.json").splitlines():
-        try:
-            findings.append(json.loads(line))
-        except:
-            pass
+    return html
 
-    if not findings:
-        return out + "<p>Aucun secret détecté ✔️</p>"
-
-    out += "<p><b>Secrets potentiels trouvés :</b></p><ul>"
-
-    for f in findings[:10]:
-        out += f"<li>Source : {html.escape(str(f.get('Source','?')))}</li>"
-
-    out += "</ul>"
-    return out
-
-
-# =======================
-#   SYFT SBOM
-# =======================
-def section_sbom():
-    data = safe_json("reports/sbom-report/sbom.json")
-    out = "<h2>📦 SBOM - Syft</h2>"
-
+# ---------------- TRIVY ----------------
+def parse_trivy():
+    path = f"{BASE}/trivy-report/trivy.json"
+    data = load_json(path)
     if not data:
-        return out + "<p><i>Rapport introuvable.</i></p>"
+        return "<p>Rapport introuvable.</p>"
 
-    artifacts = data.get("artifacts", [])
-    out += f"<p><b>Composants détectés :</b> {len(artifacts)}</p>"
-
-    out += """
-    <table class="report-table">
-      <tr><th>Nom</th><th>Version</th><th>Type</th></tr>
-    """
-
-    for a in artifacts[:15]:
-        out += f"""
-        <tr>
-          <td>{html.escape(a.get('name','?'))}</td>
-          <td>{html.escape(a.get('version','?'))}</td>
-          <td>{html.escape(a.get('type','?'))}</td>
-        </tr>
-        """
-
-    out += "</table>"
-    return out
-
-
-# =======================
-#   TRIVY (DOCKER)
-# =======================
-def section_trivy():
-    data = safe_json("reports/trivy-report/trivy.json")
-    out = "<h2>🐳 Docker Scan - Trivy</h2>"
-
-    if not data:
-        return out + "<p><i>Rapport introuvable.</i></p>"
-
-    vulns = []
+    results = []
     for r in data.get("Results", []):
-        vulns.extend(r.get("Vulnerabilities", []))
+        for v in r.get("Vulnerabilities", []):
+            results.append(v)
 
-    if not vulns:
-        return out + "<p>Aucune vulnérabilité détectée ✔️</p>"
+    if not results:
+        return "<p>Aucune vulnérabilité trouvée ✔</p>"
 
-    out += """
-    <table class="report-table">
-      <tr><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th><th>Sévérité</th></tr>
-    """
+    html = "<table><tr><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th><th>Sévérité</th></tr>"
+    for v in results:
+        html += f"<tr><td>{v['VulnerabilityID']}</td><td>{v.get('PkgName','?')}</td><td>{v.get('InstalledVersion')}</td><td>{v.get('FixedVersion')}</td><td>{v['Severity']}</td></tr>"
+    html += "</table>"
+    return html
 
-    for v in vulns[:50]:
-        out += f"""
-        <tr>
-          <td>{v['VulnerabilityID']}</td>
-          <td>{v.get('PkgName')}</td>
-          <td>{v.get('InstalledVersion')}</td>
-          <td>{v.get('FixedVersion','N/A')}</td>
-          <td>{v['Severity']}</td>
-        </tr>
-        """
+# ---------------- NIKTO ----------------
+def parse_nikto():
+    path = f"{BASE}/nikto-report/nikto.txt"
+    if not os.path.exists(path):
+        return "<p>Rapport introuvable.</p>"
+    return f"<pre>{escape(open(path).read())}</pre>"
 
-    out += "</table>"
-    return out
-
-
-# =======================
-#   NIKTO (DAST)
-# =======================
-def section_nikto():
-    content = safe_read("reports/nikto-report/nikto.txt")
-    out = "<h2>🌐 DAST - Nikto</h2>"
-
-    if not content:
-        return out + "<p><i>Rapport introuvable.</i></p>"
-
-    snippet = html.escape("\n".join(content.splitlines()[:25]))
-
-    return out + f"<pre>{snippet}</pre>"
-
-
-# =======================
-#   QODANA
-# =======================
-def section_qodana():
-    out = "<h2>🔍 Code Quality - Qodana</h2>"
-    out += "<p>Analyse Qodana exécutée. Voir les résultats dans Qodana Cloud.</p>"
-    return out
-
-
-# =======================
-#   FINAL HTML
-# =======================
-html_page = f"""
+# ---------------- HTML BUILD ----------------
+html = """
 <html>
 <head>
-<meta charset="utf-8">
-<title>DevSecOps Dashboard</title>
-
+<title>Security Dashboard</title>
 <style>
-  body {{
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    padding: 20px;
-  }}
-  h1 {{
-    background: #0d47a1;
-    color: white;
-    padding: 16px;
-    border-radius: 6px;
-  }}
-  .section {{
-    background: white;
-    padding: 20px;
-    margin-top: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  }}
-  .report-table {{
-    width: 100%;
-    border-collapse: collapse;
-  }}
-  .report-table th {{
-    background: #e3f2fd;
-    padding: 8px;
-  }}
-  .report-table td {{
-    border: 1px solid #ddd;
-    padding: 8px;
-  }}
+body { font-family: Arial; background:#f9fafc; padding:20px; }
+.section { background:white; padding:20px; margin-bottom:20px; border-radius:12px; box-shadow:0 2px 6px #00000015; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:8px; border-bottom:1px solid #ddd; }
+th { background:#e9f2ff; }
 </style>
 </head>
 <body>
 
 <h1>🔐 DevSecOps – Security Dashboard</h1>
-
-<div class="section">{section_semgrep()}</div>
-<div class="section">{section_sca()}</div>
-<div class="section">{section_secrets()}</div>
-<div class="section">{section_sbom()}</div>
-<div class="section">{section_trivy()}</div>
-<div class="section">{section_nikto()}</div>
-<div class="section">{section_qodana()}</div>
-
-</body>
-</html>
 """
 
-with open("security-dashboard.html", "w", encoding="utf-8") as f:
-    f.write(html_page)
+html += section("🔍 SAST - Semgrep", parse_semgrep())
+html += section("🧩 SCA - Dependency Check", parse_dependency())
+html += section("🔒 Secrets Scan - TruffleHog", parse_trufflehog())
+html += section("📦 SBOM - Syft", parse_sbom())
+html += section("🐳 Docker Scan - Trivy", parse_trivy())
+html += section("🌐 DAST - Nikto", parse_nikto())
+html += section("🔎 Code Quality - Qodana", "<p>Analyse Qodana exécutée dans Qodana Cloud.</p>")
 
-print("✅ Dashboard COMPLET généré !")
+html += "</body></html>"
+
+with open("security-dashboard.html", "w", encoding="utf-8") as f:
+    f.write(html)
+
+print("Dashboard généré avec succès ✔")
