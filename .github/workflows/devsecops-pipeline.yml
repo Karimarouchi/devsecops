@@ -41,11 +41,48 @@ jobs:
 
 
   #----------------------------------------------------
-  # 2) SCA — TRIVY (REMPLACE DEPENDENCY-CHECK)
+  # 2) CI — BUILD & TEST MAVEN
+  #----------------------------------------------------
+  build:
+    name: "⚙️ CI - Build & Unit Tests"
+    needs: sast
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Cache Maven
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: m2-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-${{ runner.os }}-
+
+      - name: Build package
+        run: mvn -B clean package
+
+      - name: Run unit tests
+        run: mvn test
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: target/*.jar
+
+
+  #----------------------------------------------------
+  # 3) SCA — TRIVY FILESYSTEM SCAN
   #----------------------------------------------------
   sca:
     name: "🧩 SCA - Trivy FS Scan"
-    needs: sast
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
@@ -71,7 +108,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 3) SECRETS SCAN — TRUFFLEHOG
+  # 4) SECRETS SCAN — TRUFFLEHOG
   #----------------------------------------------------
   secrets:
     name: "🔒 Secrets Scan - TruffleHog"
@@ -94,7 +131,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 4) SBOM — SYFT
+  # 5) SBOM — SYFT
   #----------------------------------------------------
   sbom:
     name: "📦 SBOM - Syft"
@@ -119,7 +156,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 5) DOCKER IMAGE — TRIVY
+  # 6) DOCKER IMAGE — TRIVY SCAN
   #----------------------------------------------------
   docker_scan:
     name: "🐳 Docker Scan - Trivy"
@@ -130,10 +167,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker Image
+      - name: Build Docker image
         run: docker build -t devsecops:latest .
 
-      - name: Run Trivy Docker Scan
+      - name: Run Trivy on Docker Image
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "devsecops:latest"
@@ -148,7 +185,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 6) DAST — NIKTO
+  # 7) DAST — NIKTO
   #----------------------------------------------------
   dast:
     name: "🌐 DAST - Nikto"
@@ -171,7 +208,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 7) QODANA — STATIC QUALITY ANALYSIS
+  # 8) QODANA — STATIC ANALYSIS
   #----------------------------------------------------
   qodana:
     name: "🔎 Qodana Cloud"
@@ -186,17 +223,17 @@ jobs:
 
 
   #----------------------------------------------------
-  # 8) REPORT & DASHBOARD HTML
+  # 9) DASHBOARD HTML
   #----------------------------------------------------
   dashboard:
     name: "📊 Generate Security Dashboard"
-    needs: [sast, sca, secrets, sbom, docker_scan, dast, qodana]
+    needs: [sast, build, sca, secrets, sbom, docker_scan, dast, qodana]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
 
       - name: Organize reports
@@ -223,7 +260,7 @@ jobs:
 
 
   #----------------------------------------------------
-  # 9) EMAIL NOTIFICATION
+  # 10) EMAIL NOTIFICATION
   #----------------------------------------------------
   notify_email:
     name: "📧 Pipeline Failure Email"
