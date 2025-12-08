@@ -135,7 +135,35 @@ def parse_nikto():
     path = f"{BASE}/nikto-report/nikto.txt"
     if not os.path.exists(path):
         return "<p>Rapport introuvable.</p>"
-    return f"<pre>{escape(open(path).read())}</pre>"
+
+    raw = open(path, "r", encoding="utf-8", errors="ignore").read()
+    lines = raw.split("\n")
+
+    findings = []
+
+    for line in lines:
+        line = line.strip()
+
+        # On ne garde que les vraies vulnérabilités / issues
+        if line.startswith("+") and ":" in line:
+            try:
+                parts = line[1:].split(":", 1)
+                endpoint = parts[0].strip()
+                issue = parts[1].strip()
+                findings.append((endpoint, issue))
+            except:
+                continue
+
+    if not findings:
+        return "<p>Aucune anomalie détectée ✔</p>"
+
+    # Construction d’un tableau propre
+    html = "<table><tr><th>Chemin</th><th>Problème détecté</th></tr>"
+    for endpoint, issue in findings:
+        html += f"<tr><td>{escape(endpoint)}</td><td>{escape(issue)}</td></tr>"
+    html += "</table>"
+
+    return html
 
 
 # ---------------- HTML BUILD ----------------
