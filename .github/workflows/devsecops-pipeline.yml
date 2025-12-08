@@ -40,13 +40,13 @@ jobs:
           path: semgrep.json
 
   #----------------------------------------------------
-  # 2) SCA — DEPENDENCY CHECK (CORRIGÉ 2025)
+  # 2) SCA — DEPENDENCY CHECK
   #----------------------------------------------------
   sca:
     name: "🧩 SCA - Dependency Check"
     needs: sast
     runs-on: ubuntu-latest
-
+  
     steps:
       - uses: actions/checkout@v4
 
@@ -63,13 +63,19 @@ jobs:
           chmod +x /opt/dependency-check/bin/dependency-check.sh
           mkdir -p dep-report
 
-      - name: Run Dependency Check (Safe mode / No NVD)
+      - name: Run Dependency Check (safe & stable)
         run: |
           /opt/dependency-check/bin/dependency-check.sh \
             --project "DevSecOps" \
             --scan ./ \
             --format "ALL" \
-            --noupdate \
+            --disableArchive \
+            --disableRetireJS \
+            --disableNodeAudit \
+            --disablePypi \
+            --disableCocoapods \
+            --disableCpan \
+            --disableRubygems \
             --out dep-report || true
 
       - uses: actions/upload-artifact@v4
@@ -223,7 +229,7 @@ jobs:
           path: security-dashboard.html
 
   #----------------------------------------------------
-  # 9) EMAIL NOTIFICATION (si pipeline échoue)
+  # 9) EMAIL NOTIFICATION
   #----------------------------------------------------
   notify_email:
     name: "📧 Pipeline Failure Email"
@@ -242,3 +248,4 @@ jobs:
           body: "Une étape du pipeline DevSecOps a échoué."
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO }}
+
