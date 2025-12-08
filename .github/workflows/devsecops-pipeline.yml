@@ -46,7 +46,7 @@ jobs:
     name: "🧩 SCA - Dependency Check"
     needs: sast
     runs-on: ubuntu-latest
-  
+
     steps:
       - uses: actions/checkout@v4
 
@@ -63,19 +63,13 @@ jobs:
           chmod +x /opt/dependency-check/bin/dependency-check.sh
           mkdir -p dep-report
 
-      - name: Run Dependency Check (safe & stable)
+      - name: Run Dependency Check (offline fallback)
         run: |
           /opt/dependency-check/bin/dependency-check.sh \
             --project "DevSecOps" \
             --scan ./ \
             --format "ALL" \
-            --disableArchive \
-            --disableRetireJS \
-            --disableNodeAudit \
-            --disablePypi \
-            --disableCocoapods \
-            --disableCpan \
-            --disableRubygems \
+            --noupdate \
             --out dep-report || true
 
       - uses: actions/upload-artifact@v4
