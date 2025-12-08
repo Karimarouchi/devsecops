@@ -43,39 +43,39 @@ jobs:
   # 2) SCA — DEPENDENCY CHECK (CORRIGÉ 2025)
   #----------------------------------------------------
   sca:
-   name: "🧩 SCA - Dependency Check"
-   needs: sast
-   runs-on: ubuntu-latest
+    name: "🧩 SCA - Dependency Check"
+    needs: sast
+    runs-on: ubuntu-latest
 
-  steps:
-    - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-    - uses: actions/setup-java@v4
-      with:
-        java-version: "17"
-        distribution: "temurin"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
 
-    - name: Install Dependency Check
-      run: |
-        wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
-        unzip dependency-check-10.0.3-release.zip
-        mv dependency-check /opt/dependency-check
-        chmod +x /opt/dependency-check/bin/dependency-check.sh
-        mkdir -p dep-report
+      - name: Install Dependency Check
+        run: |
+          wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
+          unzip dependency-check-10.0.3-release.zip
+          mv dependency-check /opt/dependency-check
+          chmod +x /opt/dependency-check/bin/dependency-check.sh
+          mkdir -p dep-report
 
-    - name: Run Dependency Check (Safe mode / No NVD)
-      run: |
-        /opt/dependency-check/bin/dependency-check.sh \
-          --project "DevSecOps" \
-          --scan ./ \
-          --format "ALL" \
-          --noupdate \
-          --out dep-report || true
+      - name: Run Dependency Check (Safe mode / No NVD)
+        run: |
+          /opt/dependency-check/bin/dependency-check.sh \
+            --project "DevSecOps" \
+            --scan ./ \
+            --format "ALL" \
+            --noupdate \
+            --out dep-report || true
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: dependency-report
-        path: dep-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dep-report
 
   #----------------------------------------------------
   # 3) SECRETS SCAN — TRUFFLEHOG
