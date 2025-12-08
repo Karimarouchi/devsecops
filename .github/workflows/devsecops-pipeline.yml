@@ -43,31 +43,34 @@ jobs:
   #----------------------------------------------------
   # 2) SCA — TRIVY (REMPLACE DEPENDENCY-CHECK)
   #----------------------------------------------------
-sca:
-  name: "🧩 SCA - Trivy FS Scan"
-  needs: sast
-  runs-on: ubuntu-latest
+  sca:
+    name: "🧩 SCA - Trivy FS Scan"
+    needs: sast
+    runs-on: ubuntu-latest
 
-  steps:
-    - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Install Trivy (official installer)
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update -y
-        sudo apt-get install -y trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
 
-    - name: Run Trivy FS scan
-      run: trivy fs . --format json --output trivy-sca.json || true
+      - name: Run Trivy FS scan
+        run: trivy fs . --format json --output trivy-sca.json || true
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: sca-report
-        path: trivy-sca.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sca-report
+          path: trivy-sca.json
 
+
+  #----------------------------------------------------
   # 3) SECRETS SCAN — TRUFFLEHOG
   #----------------------------------------------------
   secrets:
@@ -154,6 +157,7 @@ sca:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Run Nikto
         run: |
           sudo apt update -qq
