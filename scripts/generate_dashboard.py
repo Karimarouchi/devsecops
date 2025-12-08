@@ -4,13 +4,14 @@ from html import escape
 
 BASE = "reports"
 
+# ---------------- COMMON UTIL ----------------
 def load_json(path):
     if os.path.exists(path):
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            try:
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 return json.load(f)
-            except:
-                return None
+        except:
+            return None
     return None
 
 def section(title, content):
@@ -25,12 +26,14 @@ def section(title, content):
 def parse_semgrep():
     path = f"{BASE}/semgrep-report/semgrep.json"
     data = load_json(path)
+
     if not data:
         return "<p>Rapport introuvable.</p>"
 
+    # Erreur Semgrep (patterns invalides)
     if data.get("errors"):
         msg = escape(data["errors"][0]["message"])
-        return f"<p><b>Erreur Semgrep :</b> {msg}</p>"
+        return f"<div class='error-box'><b>Erreur Semgrep :</b><br>{msg}</div>"
 
     results = data.get("results", [])
     if not results:
@@ -40,12 +43,15 @@ def parse_semgrep():
     for r in results:
         html += f"<tr><td>{escape(r['path'])}</td><td>{r['start']['line']}</td><td>{escape(r['extra']['message'])}</td><td>{r['extra'].get('severity')}</td></tr>"
     html += "</table>"
+
     return html
 
 # ---------------- TRUFFLEHOG ----------------
 def parse_trufflehog():
-    path = f"{BASE}/trufflehog-report/trufflehog.json"
-    data = load_json(path)
+    path1 = f"{BASE}/trufflehog-report/trufflehog.json"
+    path2 = f"{BASE}/trufflehog.json"
+
+    data = load_json(path1) or load_json(path2)
 
     if data is None:
         return "<p>Rapport introuvable.</p>"
@@ -53,13 +59,16 @@ def parse_trufflehog():
     if isinstance(data, list) and len(data) == 0:
         return "<p>Aucun secret détecté ✔</p>"
 
-    return "<p>Secrets détectés (non affichés ici pour sécurité).</p>"
+    return "<p>Secrets détectés (non affichés pour sécurité).</p>"
 
 # ---------------- DEPENDENCY CHECK ----------------
 def parse_dependency():
-    path = f"{BASE}/dependency-report/dependency-check-report.html"
-    if os.path.exists(path):
+    path1 = f"{BASE}/dependency-report/dependency-check-report.html"
+    path2 = f"{BASE}/dep-report/dependency-check-report.html"
+
+    if os.path.exists(path1) or os.path.exists(path2):
         return "<p>Rapport disponible : dependency-check-report.html</p>"
+
     return "<p>Rapport introuvable.</p>"
 
 # ---------------- SBOM ----------------
@@ -98,27 +107,46 @@ def parse_trivy():
     for v in results:
         html += f"<tr><td>{v['VulnerabilityID']}</td><td>{v.get('PkgName','?')}</td><td>{v.get('InstalledVersion')}</td><td>{v.get('FixedVersion')}</td><td>{v['Severity']}</td></tr>"
     html += "</table>"
+
     return html
 
-# ---------------- NIKTO ----------------
+# ---------------- NIKTO (lisible & propre) ----------------
 def parse_nikto():
     path = f"{BASE}/nikto-report/nikto.txt"
+
     if not os.path.exists(path):
         return "<p>Rapport introuvable.</p>"
-    return f"<pre>{escape(open(path).read())}</pre>"
 
-# ---------------- HTML BUILD ----------------
+    lines = open(path, "r", encoding="utf-8", errors="ignore").read().splitlines()
+
+    # On extrait seulement les findings qui commencent par "+ "
+    findings = [l[2:] for l in lines if l.startswith("+ ")]
+
+    if not findings:
+        return "<p>Aucune vulnérabilité trouvée ✔</p>"
+
+    html = "<table><tr><th>Vulnérabilité détectée</th></tr>"
+    for f in findings:
+        html += f"<tr><td>{escape(f)}</td></tr>"
+    html += "</table>"
+
+    return html
+
+# ---------------- BUILD HTML ----------------
 html = """
 <html>
 <head>
 <title>Security Dashboard</title>
+
 <style>
 body { font-family: Arial; background:#f9fafc; padding:20px; }
 .section { background:white; padding:20px; margin-bottom:20px; border-radius:12px; box-shadow:0 2px 6px #00000015; }
 table { width:100%; border-collapse:collapse; }
 th, td { padding:8px; border-bottom:1px solid #ddd; }
 th { background:#e9f2ff; }
+.error-box { background:#ffe5e5; border-left:5px solid #ff0000; padding:10px; border-radius:8px; }
 </style>
+
 </head>
 <body>
 
