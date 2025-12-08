@@ -39,43 +39,31 @@ jobs:
           name: semgrep-report
           path: semgrep.json
 
+
   #----------------------------------------------------
-  # 2) SCA — DEPENDENCY CHECK
+  # 2) SCA — TRIVY (REMPLACE DEPENDENCY-CHECK)
   #----------------------------------------------------
   sca:
-    name: "🧩 SCA - Dependency Check"
+    name: "🧩 SCA - Trivy FS Scan"
     needs: sast
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Install Dependency Check
+      - name: Install Trivy
         run: |
-          wget https://github.com/jeremylong/DependencyCheck/releases/download/v10.0.3/dependency-check-10.0.3-release.zip
-          unzip dependency-check-10.0.3-release.zip
-          mv dependency-check /opt/dependency-check
-          chmod +x /opt/dependency-check/bin/dependency-check.sh
-          mkdir -p dep-report
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
 
-      - name: Run Dependency Check (offline fallback)
-        run: |
-          /opt/dependency-check/bin/dependency-check.sh \
-            --project "DevSecOps" \
-            --scan ./ \
-            --format "ALL" \
-            --noupdate \
-            --out dep-report || true
+      - name: Run Trivy FS scan
+        run: trivy fs . --format json --output trivy-sca.json || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dependency-report
-          path: dep-report
+          name: sca-report
+          path: trivy-sca.json
+
 
   #----------------------------------------------------
   # 3) SECRETS SCAN — TRUFFLEHOG
@@ -98,6 +86,7 @@ jobs:
         with:
           name: trufflehog-report
           path: trufflehog.json
+
 
   #----------------------------------------------------
   # 4) SBOM — SYFT
@@ -123,8 +112,9 @@ jobs:
           name: sbom-report
           path: sbom.json
 
+
   #----------------------------------------------------
-  # 5) DOCKER — TRIVY SCAN
+  # 5) DOCKER IMAGE — TRIVY
   #----------------------------------------------------
   docker_scan:
     name: "🐳 Docker Scan - Trivy"
@@ -138,7 +128,7 @@ jobs:
       - name: Build Docker Image
         run: docker build -t devsecops:latest .
 
-      - name: Run Trivy
+      - name: Run Trivy Docker Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "devsecops:latest"
@@ -150,6 +140,7 @@ jobs:
         with:
           name: trivy-report
           path: trivy.json
+
 
   #----------------------------------------------------
   # 6) DAST — NIKTO
@@ -172,8 +163,9 @@ jobs:
           name: nikto-report
           path: nikto.txt
 
+
   #----------------------------------------------------
-  # 7) QODANA — CODE QUALITY
+  # 7) QODANA — STATIC QUALITY ANALYSIS
   #----------------------------------------------------
   qodana:
     name: "🔎 Qodana Cloud"
@@ -186,8 +178,9 @@ jobs:
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_800884080 }}
 
+
   #----------------------------------------------------
-  # 8) DASHBOARD HTML
+  # 8) REPORT & DASHBOARD HTML
   #----------------------------------------------------
   dashboard:
     name: "📊 Generate Security Dashboard"
@@ -204,7 +197,7 @@ jobs:
         run: |
           mkdir -p reports
           mv semgrep-report reports/ || true
-          mv dependency-report reports/ || true
+          mv sca-report reports/ || true
           mv trufflehog-report reports/ || true
           mv sbom-report reports/ || true
           mv trivy-report reports/ || true
@@ -221,6 +214,7 @@ jobs:
         with:
           name: security-dashboard
           path: security-dashboard.html
+
 
   #----------------------------------------------------
   # 9) EMAIL NOTIFICATION
@@ -242,4 +236,3 @@ jobs:
           body: "Une étape du pipeline DevSecOps a échoué."
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO }}
-
