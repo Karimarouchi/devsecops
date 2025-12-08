@@ -1,127 +1,172 @@
 import json
 import os
-from datetime import datetime
+from html import escape
 
 BASE = "reports"
 
 def load_json(path):
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except:
-        return None
-
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            try:
+                return json.load(f)
+            except:
+                return None
+    return None
 
 def section(title, content):
     return f"""
-    <h2>{title}</h2>
-    <div>{content}</div>
-    <hr>
+    <div class="section">
+        <h2>{title}</h2>
+        {content}
+    </div>
     """
 
 
-#---------------------- SEMGREP ----------------------
+# ---------------- SEMGREP ----------------
 def parse_semgrep():
     path = f"{BASE}/semgrep-report/semgrep.json"
     data = load_json(path)
-    if not data or "results" not in data:
-        return "<p>Aucun résultat.</p>"
+    if not data:
+        return "<p>Rapport introuvable.</p>"
 
-    html = "<ul>"
-    for r in data["results"]:
-        html += f"<li><b>{r.get('check_id')}</b> — {r.get('path')}</li>"
-    html += "</ul>"
+    if data.get("errors"):
+        msg = escape(data["errors"][0]["message"])
+        return f"<p><b>Erreur Semgrep :</b> {msg}</p>"
+
+    results = data.get("results", [])
+    if not results:
+        return "<p>Aucun problème détecté ✔</p>"
+
+    html = "<table><tr><th>Fichier</th><th>Ligne</th><th>Message</th><th>Sévérité</th></tr>"
+    for r in results:
+        html += f"<tr><td>{escape(r['path'])}</td><td>{r['start']['line']}</td><td>{escape(r['extra']['message'])}</td><td>{r['extra'].get('severity')}</td></tr>"
+    html += "</table>"
     return html
 
 
-#---------------------- TRIVY SCA ----------------------
-def parse_sca():
+# ---------------- SCA NEW (TRIVY FS) ----------------
+def parse_sca_trivy():
     path = f"{BASE}/sca-report/trivy-sca.json"
+    data = load_json(path)
+
+    if not data:
+        return "<p>Rapport introuvable.</p>"
+
+    vulnerabilities = []
+
+    for result in data.get("Results", []):
+        for vuln in result.get("Vulnerabilities", []):
+            vulnerabilities.append(vuln)
+
+    if not vulnerabilities:
+        return "<p>Aucune vulnérabilité trouvée ✔</p>"
+
+    html = "<table><tr><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th><th>Sévérité</th></tr>"
+    for v in vulnerabilities:
+        html += f"""
+        <tr>
+            <td>{escape(v['VulnerabilityID'])}</td>
+            <td>{escape(v.get('PkgName', '?'))}</td>
+            <td>{escape(v.get('InstalledVersion', '?'))}</td>
+            <td>{escape(v.get('FixedVersion', '?'))}</td>
+            <td>{escape(v.get('Severity', '?'))}</td>
+        </tr>
+        """
+    html += "</table>"
+    return html
+
+
+# ---------------- TRUFFLEHOG ----------------
+def parse_trufflehog():
+    path = f"{BASE}/trufflehog-report/trufflehog.json"
+    data = load_json(path)
+
+    if data is None:
+        return "<p>Rapport introuvable.</p>"
+
+    if isinstance(data, list) and len(data) == 0:
+        return "<p>Aucun secret détecté ✔</p>"
+
+    return "<p>Secrets détectés (non affichés ici pour sécurité).</p>"
+
+
+# ---------------- SBOM ----------------
+def parse_sbom():
+    path = f"{BASE}/sbom-report/sbom.json"
+    data = load_json(path)
+    if not data:
+        return "<p>Rapport introuvable.</p>"
+
+    components = data.get("artifacts", [])
+    html = f"<p><b>Composants détectés :</b> {len(components)}</p>"
+
+    html += "<table><tr><th>Nom</th><th>Version</th><th>Type</th></tr>"
+    for comp in components:
+        html += f"<tr><td>{escape(comp['name'])}</td><td>{comp.get('version','?')}</td><td>{comp.get('type','?')}</td></tr>"
+    html += "</table>"
+
+    return html
+
+
+# ---------------- TRIVY DOCKER ----------------
+def parse_trivy_docker():
+    path = f"{BASE}/trivy-report/trivy.json"
     data = load_json(path)
     if not data:
         return "<p>Rapport introuvable.</p>"
 
     vulns = []
-    for result in data.get("Results", []):
-        for v in result.get("Vulnerabilities", []):
+    for r in data.get("Results", []):
+        for v in r.get("Vulnerabilities", []):
             vulns.append(v)
 
     if not vulns:
         return "<p>Aucune vulnérabilité trouvée ✔</p>"
 
-    html = "<table border='1'><tr><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th><th>Sévérité</th></tr>"
+    html = "<table><tr><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th><th>Sévérité</th></tr>"
     for v in vulns:
-        html += f"<tr><td>{v['VulnerabilityID']}</td><td>{v.get('PkgName')}</td><td>{v.get('InstalledVersion')}</td><td>{v.get('FixedVersion')}</td><td>{v['Severity']}</td></tr>"
+        html += f"<tr><td>{v['VulnerabilityID']}</td><td>{v.get('PkgName','?')}</td><td>{v.get('InstalledVersion')}</td><td>{v.get('FixedVersion')}</td><td>{v['Severity']}</td></tr>"
     html += "</table>"
     return html
 
 
-#---------------------- TRUFFLEHOG ----------------------
-def parse_secrets():
-    path = f"{BASE}/trufflehog-report/trufflehog.json"
-    data = load_json(path)
-    if not data:
-        return "<p>Aucun secret détecté ✔</p>"
-    return f"<pre>{json.dumps(data, indent=2)}</pre>"
-
-
-#---------------------- SBOM ----------------------
-def parse_sbom():
-    path = f"{BASE}/sbom-report/sbom.json"
-    data = load_json(path)
-    if not data:
-        return "<p>SBOM introuvable.</p>"
-    return "<p>SBOM généré ✔</p>"
-
-
-#---------------------- TRIVY DOCKER ----------------------
-def parse_trivy_docker():
-    path = f"{BASE}/trivy-report/trivy.json"
-    data = load_json(path)
-    if not data:
-        return "<p>Aucun rapport Docker.</p>"
-    return "<pre>Vulnérabilités Docker trouvées ✔</pre>"
-
-
-#---------------------- NIKTO ----------------------
+# ---------------- NIKTO ----------------
 def parse_nikto():
     path = f"{BASE}/nikto-report/nikto.txt"
     if not os.path.exists(path):
-        return "<p>Rapport Nikto introuvable.</p>"
-    with open(path, "r") as f:
-        content = f.read()
-    return f"<pre>{content}</pre>"
+        return "<p>Rapport introuvable.</p>"
+    return f"<pre>{escape(open(path).read())}</pre>"
 
 
-#---------------------- GENERATE HTML ----------------------
-html = f"""
+# ---------------- HTML BUILD ----------------
+html = """
 <html>
 <head>
 <title>Security Dashboard</title>
 <style>
-body {{ font-family: Arial; padding: 20px; }}
-h1 {{ background: #222; color: white; padding: 10px; }}
-h2 {{ color: #1F6FEB; }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ border: 1px solid #ccc; padding: 8px; }}
+body { font-family: Arial; background:#f9fafc; padding:20px; }
+.section { background:white; padding:20px; margin-bottom:20px; border-radius:12px; box-shadow:0 2px 6px #00000015; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:8px; border-bottom:1px solid #ddd; }
+th { background:#e9f2ff; }
 </style>
 </head>
 <body>
 
-<h1>🔐 Security Dashboard – {datetime.now().strftime("%Y-%m-%d %H:%M")}</h1>
-
-{section("🔍 SAST – Semgrep", parse_semgrep())}
-{section("🧩 SCA – Trivy FS", parse_sca())}
-{section("🔒 Secrets – TruffleHog", parse_secrets())}
-{section("📦 SBOM – Syft", parse_sbom())}
-{section("🐳 Docker Scan – Trivy", parse_trivy_docker())}
-{section("🌐 DAST – Nikto", parse_nikto())}
-
-</body>
-</html>
+<h1>🔐 DevSecOps – Security Dashboard</h1>
 """
 
-with open("security-dashboard.html", "w") as f:
+html += section("🔍 SAST - Semgrep", parse_semgrep())
+html += section("🧩 SCA - Trivy FS", parse_sca_trivy())
+html += section("🔒 Secrets Scan - TruffleHog", parse_trufflehog())
+html += section("📦 SBOM - Syft", parse_sbom())
+html += section("🐳 Docker Scan - Trivy", parse_trivy_docker())
+html += section("🌐 DAST - Nikto", parse_nikto())
+html += section("🔎 Code Quality - Qodana", "<p>Analyse Qodana exécutée dans Qodana Cloud.</p>")
+
+html += "</body></html>"
+
+with open("security-dashboard.html", "w", encoding="utf-8") as f:
     f.write(html)
 
-print("Dashboard generated ✔")
+print("Dashboard généré avec succès ✔")
