@@ -1,7 +1,12 @@
-package com.example;
+package com.example.devsecopsdemo;
 
-public class App {
-    public static void main(String[] args) {
-        System.out.println("Hello DevSecOps!");
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class SimpleTest {
+
+    @Test
+    void additionShouldWork() {
+        assertEquals(2, 1 + 1);
     }
 }
