@@ -40,7 +40,7 @@ jobs:
           path: semgrep.json
 
   #----------------------------------------------------
-  # 2) CI — BUILD & TEST MAVEN (VERSION AMÉLIORÉE)
+  # 2) CI — BUILD & TEST MAVEN (VERSION CORRIGÉE)
   #----------------------------------------------------
   build:
     name: "⚙️ CI - Build & Unit Tests"
@@ -64,37 +64,50 @@ jobs:
           key: m2-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
           restore-keys: m2-${{ runner.os }}-
 
-      # Compilation du projet
-      - name: Compile project
-        id: compile
+      # Déterminer le statut du cache (OK / MISS)
+      - name: Detect cache status
         run: |
-          mvn -B -e -q compile && echo "status=OK" >> compile_status || echo "status=FAIL" >> compile_status
+          if [ "${{ steps.cache-maven.outputs.cache-hit }}" = "true" ]; then
+            echo "OK" > cache_status
+          else
+            echo "MISS" > cache_status
+          fi
 
-      # Exécution des tests
-      - name: Run unit tests
-        id: tests
+      # Compilation
+      - name: Compile project
         run: |
-          mvn -q test && echo "status=OK" >> tests_status || echo "status=FAIL" >> tests_status
+          mvn -B -q compile && echo "OK" > compile_status || echo "FAIL" > compile_status
+
+      # Tests unitaires
+      - name: Run unit tests
+        run: |
+          mvn -q test && echo "OK" > tests_status || echo "FAIL" > tests_status
 
       # Build du JAR
       - name: Package artifact
-        id: artifact
         run: |
-          mvn -q package && echo "status=OK" >> artifact_status || echo "status=FAIL" >> artifact_status
+          mvn -q package && echo "OK" > artifact_status || echo "FAIL" > artifact_status
 
-      # Création du dossier des rapports CI
+      # Générer le rapport CI JSON
       - name: Save CI status
         run: |
           mkdir -p reports/ci-status
-          echo '{"compile":"'$(cat compile_status | cut -d= -f2)'","tests":"'$(cat tests_status | cut -d= -f2)'","artifact":"'$(cat artifact_status | cut -d= -f2)'","cache":"'${{ steps.cache-maven.outputs.cache-hit == 'true' && echo "OK" || echo "MISS" }}'","cleanup":"OK"}' \
-          > reports/ci-status/status.json
+          echo "{ \
+            \"compile\":\"$(cat compile_status)\", \
+            \"tests\":\"$(cat tests_status)\", \
+            \"artifact\":\"$(cat artifact_status)\", \
+            \"cache\":\"$(cat cache_status)\", \
+            \"cleanup\":\"OK\" \
+          }" > reports/ci-status/status.json
 
+      # Upload JAR
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-artifact
           path: target/*.jar
 
+      # Upload CI JSON
       - name: Upload CI status
         uses: actions/upload-artifact@v4
         with:
