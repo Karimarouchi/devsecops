@@ -17,7 +17,7 @@ permissions:
 jobs:
 
   #----------------------------------------------------
-  # 1) SAST — SEMGREP
+  # 1) SAST — SEMGREP 1) SAST — SEMGREP
   #----------------------------------------------------
   sast:
     name: "🔍 SAST - Semgrep"
