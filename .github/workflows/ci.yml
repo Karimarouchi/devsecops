@@ -1,0 +1,143 @@
+name: "🔧 CI - Build, Tests & Code Quality"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+
+  ci:
+    name: "⚙️ CI - Build & Code Quality"
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------------------
+      # 1) CHECKOUT
+      # ----------------------------------------------------
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # important for SonarQube
+
+      # ----------------------------------------------------
+      # 2) YAML LINTER
+      # ----------------------------------------------------
+      - name: Lint YAML files
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: ".yamllint.yml"
+
+      # ----------------------------------------------------
+      # 3) DOCKERFILE LINTER
+      # ----------------------------------------------------
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: "Dockerfile"
+
+      # ----------------------------------------------------
+      # 4) JAVA + MAVEN
+      # ----------------------------------------------------
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: maven-
+
+      # ----------------------------------------------------
+      # 5) CHECKSTYLE
+      # ----------------------------------------------------
+      - name: Run Checkstyle
+        run: |
+          mvn -q checkstyle:checkstyle || true
+          mkdir -p reports/checkstyle
+          cp target/checkstyle-result.xml reports/checkstyle/ || true
+
+      # ----------------------------------------------------
+      # 6) SPOTBUGS
+      # ----------------------------------------------------
+      - name: Run SpotBugs
+        run: |
+          mvn -q com.github.spotbugs:spotbugs-maven-plugin:spotbugs || true
+          mkdir -p reports/spotbugs
+          cp target/spotbugsXml.xml reports/spotbugs/ || true
+
+      # ----------------------------------------------------
+      # 7) COMPILE
+      # ----------------------------------------------------
+      - name: Compile project
+        run: |
+          mvn -q compile && echo "OK" > compile_status || echo "FAIL" > compile_status
+
+      # ----------------------------------------------------
+      # 8) TESTS + JACOCO
+      # ----------------------------------------------------
+      - name: Run unit tests & JaCoCo
+        run: |
+          mvn -q test jacoco:report
+          mkdir -p reports/jacoco
+          cp target/site/jacoco/index.html reports/jacoco/ || true
+          echo "OK" > tests_status
+
+      # ----------------------------------------------------
+      # 9) BUILD JAR
+      # ----------------------------------------------------
+      - name: Package JAR
+        run: |
+          mvn -q package && echo "OK" > artifact_status || echo "FAIL" > artifact_status
+
+      # ----------------------------------------------------
+      # 10) SONARQUBE ANALYSIS
+      # ----------------------------------------------------
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=devsecops-pipeline
+
+      # ----------------------------------------------------
+      # 11) GENERATE CI STATUS
+      # ----------------------------------------------------
+      - name: Save CI status JSON
+        run: |
+          mkdir -p reports/ci
+          echo "{ \
+            \"compile\":\"$(cat compile_status)\", \
+            \"tests\":\"$(cat tests_status)\", \
+            \"artifact\":\"$(cat artifact_status)\" \
+          }" > reports/ci/status.json
+
+      # ----------------------------------------------------
+      # 12) UPLOAD ARTIFACTS
+      # ----------------------------------------------------
+      - name: Upload CI status
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-status
+          path: reports/ci/status.json
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-jar
+          path: target/*.jar
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: reports/
